@@ -7,6 +7,7 @@ from termcolor import colored
 from scipy.ndimage.filters import maximum_filter
 from scipy.ndimage.morphology import (generate_binary_structure, iterate_structure, binary_erosion)
 from operator import itemgetter
+import logging
 
 IDX_FREQ_I = 0
 IDX_TIME_J = 1
@@ -52,7 +53,8 @@ PEAK_SORT = True
 # fingerprint calculation. The more you throw away, the less storage, but
 # potentially higher collisions and misclassifications when identifying songs.
 FINGERPRINT_REDUCTION = 20
-
+logging.basicConfig(filename='fingerprint.log', filemode='w',
+                    format='%(name)s - %(levelname)s - %(message)s')
 def fingerprint(channel_samples, Fs=DEFAULT_FS,
                 wsize=DEFAULT_WINDOW_SIZE,
                 wratio=DEFAULT_OVERLAP_RATIO,
@@ -61,44 +63,46 @@ def fingerprint(channel_samples, Fs=DEFAULT_FS,
                 plots=False):
 
     # show samples plot
-    if plots:
-      plt.plot(channel_samples)
-      plt.title('%d samples' % len(channel_samples))
-      plt.xlabel('time (s)')
-      plt.ylabel('amplitude (A)')
-      plt.show()
-      plt.gca().invert_yaxis()
+    try:
+      if plots:
+        plt.plot(channel_samples)
+        plt.title('%d samples' % len(channel_samples))
+        plt.xlabel('time (s)')
+        plt.ylabel('amplitude (A)')
+        plt.show()
+        plt.gca().invert_yaxis()
 
-    # FFT the channel, log transform output, find local maxima, then return
-    # locally sensitive hashes.
-    # FFT the signal and extract frequency components
+      # FFT the channel, log transform output, find local maxima, then return
+      # locally sensitive hashes.
+      # FFT the signal and extract frequency components
+      # plot the angle spectrum of segments within the signal in a colormap
+      arr2D = mlab.specgram(
+          channel_samples,
+          NFFT=wsize,
+          Fs=Fs,
+          window=mlab.window_hanning,
+          noverlap=int(wsize * wratio))[0]
 
-    # plot the angle spectrum of segments within the signal in a colormap
-    arr2D = mlab.specgram(
-        channel_samples,
-        NFFT=wsize,
-        Fs=Fs,
-        window=mlab.window_hanning,
-        noverlap=int(wsize * wratio))[0]
+      # show spectrogram plot
+      if plots:
+        plt.plot(arr2D)
+        plt.title('FFT')
+        plt.show()
 
-    # show spectrogram plot
-    if plots:
-      plt.plot(arr2D)
-      plt.title('FFT')
-      plt.show()
+      # apply log transform since specgram() returns linear array
+      arr2D = 10 * np.log10(arr2D) # calculates the base 10 logarithm for all elements of arr2D
+      arr2D[arr2D == -np.inf] = 0  # replace infs with zeros
 
-    # apply log transform since specgram() returns linear array
-    arr2D = 10 * np.log10(arr2D) # calculates the base 10 logarithm for all elements of arr2D
-    arr2D[arr2D == -np.inf] = 0  # replace infs with zeros
+      # find local maxima
+      local_maxima = get_2D_peaks(arr2D, plot=plots, amp_min=amp_min)
 
-    # find local maxima
-    local_maxima = get_2D_peaks(arr2D, plot=plots, amp_min=amp_min)
+      msg = '   local_maxima: %d of frequency & time pairs'
+      print colored(msg, attrs=['dark']) % len(local_maxima)
 
-    msg = '   local_maxima: %d of frequency & time pairs'
-    print colored(msg, attrs=['dark']) % len(local_maxima)
-
-    # return hashes
-    return generate_hashes(local_maxima, fan_value=fan_value)
+      # return hashes
+      return generate_hashes(local_maxima, fan_value=fan_value)
+    except Exception as e:
+        logging.warning(str(e))
 
 def get_2D_peaks(arr2D, plot=False, amp_min=DEFAULT_AMP_MIN):
     # http://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.morphology.iterate_structure.html#scipy.ndimage.morphology.iterate_structure

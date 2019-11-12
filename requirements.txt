@@ -38,3 +38,4 @@ subprocess32==3.5.4
 termcolor==1.1.0
 ttystatus==0.38
 virtualenv==16.6.1
+pymongo==3.9.0
